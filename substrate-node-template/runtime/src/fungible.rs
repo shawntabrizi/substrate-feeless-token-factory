@@ -325,7 +325,7 @@ mod tests {
 		type TokenBalance = u64;
 		type TokenId = u32;
 		type Currency = Balances;
-		type TokenFreeMoves = u32;
+		type TokenFreeTransfers = u32;
 		type FindAuthor = ();
 	}
 	type FungibleModule = Module<Test>;
