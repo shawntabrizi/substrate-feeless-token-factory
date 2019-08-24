@@ -175,6 +175,7 @@ decl_module! {
 			let who = ensure_signed(origin)?;
 			ensure!(Self::count() > token_id, "Non-existent token");
 			T::Currency::transfer(&who, &Self::fund_account_id(token_id), value)?;
+
 			Self::deposit_event(RawEvent::Deposit(token_id, who, value));
 		}
 	}
@@ -263,9 +264,9 @@ mod tests {
 
 	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
-	use support::{impl_outer_origin, assert_ok, parameter_types};
+	use support::{impl_outer_origin, assert_ok, assert_err, parameter_types};
 	use sr_primitives::{
-		traits::{BlakeTwo256, AccountConversion, IdentityLookup},
+		traits::{BlakeTwo256, IdentityLookup},
 		testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
@@ -285,6 +286,22 @@ mod tests {
 		pub const MaximumBlockLength: u32 = 2 * 1024;
 		pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
 	}
+	impl balances::Trait for Test {
+		type Balance = u64;
+		type OnFreeBalanceZero = ();
+		type OnNewAccount = ();
+		type TransactionPayment = ();
+		type TransferPayment = ();
+		type DustRemoval = ();
+		type Event = ();
+		type ExistentialDeposit = ();
+		type TransferFee = ();
+		type CreationFee = ();
+		type TransactionBaseFee = ();
+		type TransactionByteFee = ();
+		type WeightToFee = ();
+	}
+
 	impl system::Trait for Test {
 		type Origin = Origin;
 		type Call = ();
@@ -305,23 +322,58 @@ mod tests {
 	}
 	impl Trait for Test {
 		type Event = ();
+		type TokenBalance = u64;
+		type TokenId = u32;
+		type Currency = Balances;
+		type TokenFreeMoves = u32;
+		type FindAuthor = ();
 	}
-	type TemplateModule = Module<Test>;
+	type FungibleModule = Module<Test>;
+	type Balances = balances::Module<Test>;
 
 	// This function basically just builds a genesis storage key/value store according to
 	// our desired mockup.
 	fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
-		system::GenesisConfig::default().build_storage::<Test>().unwrap().into()
+		let mut t = system::GenesisConfig::default().build_storage::<Test>().unwrap();
+
+		let _ = balances::GenesisConfig::<Test> {
+			balances: vec![
+				(1, 100),
+				(2, 500),
+			],
+			vesting: vec![],
+		}.assimilate_storage(&mut t).unwrap();
+
+		t.into()
 	}
 
 	#[test]
-	fn it_works_for_default_value() {
+	fn it_deposits_more_currency_to_token() {
 		with_externalities(&mut new_test_ext(), || {
-			// Just a dummy test for the dummy funtion `do_something`
-			// calling the `do_something` function with a value 42
-			assert_ok!(TemplateModule::do_something(Origin::signed(1), 42));
 			// asserting that the stored value is equal to what we stored
-			assert_eq!(TemplateModule::something(), Some(42));
+		 	let origin = Origin::signed(1);
+			<Count<Test>>::put(1);
+			let token_id = 0;
+			let value = 40;
+
+			assert_ok!(FungibleModule::deposit(origin, token_id, value));
+
+			assert_eq!(Balances::free_balance(&1), 60);
+		});
+	}
+
+	#[test]
+	fn it_does_not_deposit_if_not_enough_balance() {
+		with_externalities(&mut new_test_ext(), || {
+			// asserting that the stored value is equal to what we stored
+			let origin = Origin::signed(1);
+			<Count<Test>>::put(1);
+			let token_id = 0;
+			let value = 101;
+
+			assert_err!(FungibleModule::deposit(origin, token_id, value), "balance too low to send value");
+
+			assert_eq!(Balances::free_balance(&1), 100);
 		});
 	}
 }
