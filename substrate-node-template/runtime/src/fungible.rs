@@ -327,6 +327,10 @@ mod tests {
 		type AvailableBlockRatio = AvailableBlockRatio;
 		type Version = ();
 	}
+	parameter_types! {
+		pub const FreeTransferPeriod: u32 = 10;
+		pub const FundTransferFee: u32 = 10;
+	}
 	impl Trait for Test {
 		type Event = ();
 		type TokenBalance = u64;
@@ -334,6 +338,8 @@ mod tests {
 		type Currency = Balances;
 		type TokenFreeTransfers = u32;
 		type FindAuthor = ();
+		type FreeTransferPeriod = FreeTransferPeriod;
+		type FundTransferFee = FundTransferFee;
 	}
 	type FungibleModule = Module<Test>;
 	type Balances = balances::Module<Test>;
