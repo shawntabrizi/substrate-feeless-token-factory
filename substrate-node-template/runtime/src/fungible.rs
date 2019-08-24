@@ -12,6 +12,7 @@ use support::{traits::{Currency,  WithdrawReason, ExistenceRequirement}, decl_mo
 	Parameter, StorageValue, StorageMap, dispatch::Result
 };
 use support::traits::FindAuthor;
+use sr_primitives::ModuleId;
 use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One,
 	CheckedAdd, CheckedSub, SignedExtension, DispatchError, MaybeSerializeDebug,
 	SaturatedConversion, AccountIdConversion,
@@ -131,25 +132,13 @@ decl_module! {
 
 			<Allowance<T>>::insert((id, from, sender), updated_allowance);
 		}
-///////////////////////////////////////////////////////////////////
-
 
 		fn deposit(origin, #[compact] token_id: T::TokenId, #[compact] value: BalanceOf<T>) {
 			let who = ensure_signed(origin)?;
-
-			// ensure!(value >= T::MinContribution::get(), "contribution too small");
-			// let mut token_fund = Self::count(token_id).ok_or("invalid token id")?;
-			ensure!(Self::count() >= token_id, "Non-existent token");
-
+			ensure!(Self::count() > token_id, "Non-existent token");
 			T::Currency::transfer(&who, &Self::fund_account_id(token_id), value)?;
-
 			Self::deposit_event(RawEvent::Deposit(token_id, who, value));
-			// let balance = Self::contribution_get(index, &who);
-			// let balance = balance.saturating_add(value);
-			// // Self::contribution_put(index, &who, &balance);
 		}
-
-//////////////////////////////////////////////////////////////////
 	}
 }
 
@@ -184,6 +173,7 @@ pub struct TakeTokenFees<T: Trait> {
 impl<T: Trait> rstd::fmt::Debug for TakeTokenFees<T>
 {
 	fn fmt(&self, f: &mut rstd::fmt::Formatter) -> rstd::fmt::Result {
+		// TODO: Fix this to actually show value
 		write!(f, "TokenFee ( id: ?, fee: ? )")
 	}
 }
