@@ -8,20 +8,23 @@
 /// For more guidance on Substrate modules, see the example module
 /// https://github.com/paritytech/substrate/blob/master/srml/example/src/lib.rs
 
-use support::{decl_module, decl_storage, decl_event, ensure,
+use support::{traits::{Currency,  WithdrawReason, ExistenceRequirement}, decl_module, decl_storage, decl_event, ensure,
 	Parameter, StorageValue, StorageMap, dispatch::Result
 };
 use support::traits::FindAuthor;
 use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One,
 	CheckedAdd, CheckedSub, SignedExtension, DispatchError, MaybeSerializeDebug,
-	SaturatedConversion,
+	SaturatedConversion, AccountIdConversion,
 };
 use sr_primitives::weights::{DispatchInfo, SimpleDispatchInfo};
 use sr_primitives::transaction_validity::{TransactionPriority, ValidTransaction};
 use system::ensure_signed;
 use codec::{Encode, Decode, Codec};
 
-pub trait Trait: system::Trait + babe::Trait {
+pub trait Trait: system::Trait {
+
+	type Currency: Currency<Self::AccountId>;
+
 	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 
@@ -34,15 +37,21 @@ pub trait Trait: system::Trait + babe::Trait {
 	type FindAuthor: FindAuthor<Self::AccountId>;
 }
 
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+
+const MODULE_ID: ModuleId =ModuleId(*b"fung-pot");
+
 decl_event!(
 	pub enum Event<T> where
 		AccountId = <T as system::Trait>::AccountId,
 		TokenId = <T as Trait>::TokenId,
 		TokenBalance = <T as Trait>::TokenBalance,
+		Balance = BalanceOf<T>,
 	{
 		NewToken(TokenId, AccountId, TokenBalance),
 		Transfer(TokenId, AccountId, AccountId, TokenBalance),
 		Approval(TokenId, AccountId, AccountId, TokenBalance),
+		Deposit(TokenId, AccountId, Balance),
 	}
 );
 
@@ -62,17 +71,22 @@ decl_module! {
 		fn deposit_event<T>() = default;
 
 		#[weight = SimpleDispatchInfo::FixedNormal(1_000_000)]
-		fn create_token(origin, #[compact] total_supply: T::TokenBalance) {
+		fn create_token(origin, #[compact] total_supply: T::TokenBalance, deposit: BalanceOf<T>) {
 			let sender = ensure_signed(origin)?;
 
 			let id = Self::count();
 			let next_id = id.checked_add(&One::one()).ok_or("overflow when adding new token")?;
+			let imbalance = T::Currency::withdraw(&sender, deposit, WithdrawReason::Transfer, ExistenceRequirement::KeepAlive)?;
 
 			<Balances<T>>::insert((id, sender.clone()), total_supply);
 			<TotalSupply<T>>::insert(id, total_supply);
 			<Count<T>>::put(next_id);
 
-			Self::deposit_event(RawEvent::NewToken(id, sender, total_supply));
+			T::Currency::resolve_creating(&Self::fund_account_id(id), imbalance);
+
+			Self::deposit_event(RawEvent::NewToken(id, sender.clone(), total_supply));
+
+			Self::deposit_event(RawEvent::Deposit(id, sender, deposit));
 		}
 
 		#[weight = SimpleDispatchInfo::FixedNormal(0)]
@@ -117,10 +131,33 @@ decl_module! {
 
 			<Allowance<T>>::insert((id, from, sender), updated_allowance);
 		}
+///////////////////////////////////////////////////////////////////
+
+
+		fn deposit(origin, #[compact] token_id: T::TokenId, #[compact] value: BalanceOf<T>) {
+			let who = ensure_signed(origin)?;
+
+			// ensure!(value >= T::MinContribution::get(), "contribution too small");
+			// let mut token_fund = Self::count(token_id).ok_or("invalid token id")?;
+			ensure!(Self::count() >= token_id, "Non-existent token");
+
+			T::Currency::transfer(&who, &Self::fund_account_id(token_id), value)?;
+
+			Self::deposit_event(RawEvent::Deposit(token_id, who, value));
+			// let balance = Self::contribution_get(index, &who);
+			// let balance = balance.saturating_add(value);
+			// // Self::contribution_put(index, &who, &balance);
+		}
+
+//////////////////////////////////////////////////////////////////
 	}
 }
 
 impl<T: Trait> Module<T> {
+	pub fn fund_account_id(index: T::TokenId) -> T::AccountId {
+		MODULE_ID.into_sub_account(index)
+	}
+
 	fn make_transfer(id: T::TokenId, from: T::AccountId, to: T::AccountId, amount: T::TokenBalance) -> Result {
 		ensure!(!amount.is_zero(), "transfer amount should be non-zero");
 		
@@ -199,7 +236,9 @@ mod tests {
 	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
 	use support::{impl_outer_origin, assert_ok, parameter_types};
-	use sr_primitives::{traits::{BlakeTwo256, IdentityLookup}, testing::Header};
+	use sr_primitives::{
+		traits::{BlakeTwo256, AccountConversion, IdentityLookup},
+		testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
 
