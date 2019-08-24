@@ -40,10 +40,12 @@ decl_event!(
 		AccountId = <T as system::Trait>::AccountId,
 		TokenId = <T as Trait>::TokenId,
 		TokenBalance = <T as Trait>::TokenBalance,
+		Balance = BalanceOf<T>,
 	{
 		NewToken(TokenId, AccountId, TokenBalance),
 		Transfer(TokenId, AccountId, AccountId, TokenBalance),
 		Approval(TokenId, AccountId, AccountId, TokenBalance),
+		Deposit(TokenId, AccountId, Balance),
 	}
 );
 
@@ -76,7 +78,9 @@ decl_module! {
 
 			T::Currency::resolve_creating(&Self::fund_account_id(id), imbalance);
 
-			Self::deposit_event(RawEvent::NewToken(id, sender, total_supply));
+			Self::deposit_event(RawEvent::NewToken(id, sender.clone(), total_supply));
+
+			Self::deposit_event(RawEvent::Deposit(id, sender, deposit));
 		}
 
 		fn transfer(origin,
@@ -118,6 +122,25 @@ decl_module! {
 
 			<Allowance<T>>::insert((id, from, sender), updated_allowance);
 		}
+///////////////////////////////////////////////////////////////////
+
+
+		fn deposit(origin, #[compact] token_id: T::TokenId, #[compact] value: BalanceOf<T>) {
+			let who = ensure_signed(origin)?;
+
+			// ensure!(value >= T::MinContribution::get(), "contribution too small");
+			// let mut token_fund = Self::count(token_id).ok_or("invalid token id")?;
+			ensure!(Self::count() >= token_id, "Non-existent token");
+
+			T::Currency::transfer(&who, &Self::fund_account_id(token_id), value)?;
+
+			Self::deposit_event(RawEvent::Deposit(token_id, who, value));
+			// let balance = Self::contribution_get(index, &who);
+			// let balance = balance.saturating_add(value);
+			// // Self::contribution_put(index, &who, &balance);
+		}
+
+//////////////////////////////////////////////////////////////////
 	}
 }
 
