@@ -12,6 +12,7 @@ use support::{decl_module, decl_storage, decl_event, ensure,
 	Parameter, StorageValue, StorageMap, dispatch::Result
 };
 use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One, CheckedAdd, CheckedSub};
+use sr_primitives::weights::SimpleDispatchInfo;
 use system::ensure_signed;
 
 pub trait Trait: system::Trait {
@@ -52,6 +53,7 @@ decl_module! {
 	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 		fn deposit_event<T>() = default;
 
+		#[weight = SimpleDispatchInfo::FixedNormal(1_000_000)]
 		fn create_token(origin, #[compact] total_supply: T::TokenBalance) {
 			let sender = ensure_signed(origin)?;
 

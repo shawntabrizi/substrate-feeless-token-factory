@@ -119,7 +119,7 @@ fn testnet_genesis(initial_authorities: Vec<(AccountId, AccountId, GrandpaId, Ba
 			ids: endowed_accounts.clone(),
 		}),
 		balances: Some(BalancesConfig {
-			balances: endowed_accounts.iter().cloned().map(|k|(k, 1 << 60)).collect(),
+			balances: endowed_accounts.iter().cloned().map(|k|(k, 1 << 70)).collect(),
 			vesting: vec![],
 		}),
 		sudo: Some(SudoConfig {
