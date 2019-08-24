@@ -8,14 +8,19 @@
 /// For more guidance on Substrate modules, see the example module
 /// https://github.com/paritytech/substrate/blob/master/srml/example/src/lib.rs
 
-use support::{decl_module, decl_storage, decl_event, ensure,
+use support::{traits::{Currency,  WithdrawReason, ExistenceRequirement}, decl_module, decl_storage, decl_event, ensure,
 	Parameter, StorageValue, StorageMap, dispatch::Result
 };
-use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One, CheckedAdd, CheckedSub};
+use sr_primitives::ModuleId;
+use sr_primitives::traits::{AccountIdConversion, Member, SimpleArithmetic, Zero, StaticLookup, One, CheckedAdd, CheckedSub};
 use sr_primitives::weights::SimpleDispatchInfo;
 use system::ensure_signed;
 
+
 pub trait Trait: system::Trait {
+
+	type Currency: Currency<Self::AccountId>;
+
 	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 
@@ -25,6 +30,10 @@ pub trait Trait: system::Trait {
 	/// The arithmetic type of asset identifier.
 	type TokenId: Parameter + SimpleArithmetic + Default + Copy;
 }
+
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+
+const MODULE_ID: ModuleId =ModuleId(*b"fung-pot");
 
 decl_event!(
 	pub enum Event<T> where
@@ -54,15 +63,18 @@ decl_module! {
 		fn deposit_event<T>() = default;
 
 		#[weight = SimpleDispatchInfo::FixedNormal(1_000_000)]
-		fn create_token(origin, #[compact] total_supply: T::TokenBalance) {
+		fn create_token(origin, #[compact] total_supply: T::TokenBalance, deposit: BalanceOf<T>) {
 			let sender = ensure_signed(origin)?;
 
 			let id = Self::count();
 			let next_id = id.checked_add(&One::one()).ok_or("overflow when adding new token")?;
+			let imbalance = T::Currency::withdraw(&sender, deposit, WithdrawReason::Transfer, ExistenceRequirement::KeepAlive)?;
 
 			<Balances<T>>::insert((id, sender.clone()), total_supply);
 			<TotalSupply<T>>::insert(id, total_supply);
 			<Count<T>>::put(next_id);
+
+			T::Currency::resolve_creating(&Self::fund_account_id(id), imbalance);
 
 			Self::deposit_event(RawEvent::NewToken(id, sender, total_supply));
 		}
@@ -110,6 +122,10 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
+	pub fn fund_account_id(index: T::TokenId) -> T::AccountId {
+		MODULE_ID.into_sub_account(index)
+	}
+
 	fn make_transfer(id: T::TokenId, from: T::AccountId, to: T::AccountId, amount: T::TokenBalance) -> Result {
 		ensure!(!amount.is_zero(), "transfer amount should be non-zero");
 		
@@ -133,7 +149,9 @@ mod tests {
 	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
 	use support::{impl_outer_origin, assert_ok, parameter_types};
-	use sr_primitives::{traits::{BlakeTwo256, IdentityLookup}, testing::Header};
+	use sr_primitives::{
+		traits::{BlakeTwo256, AccountConversion, IdentityLookup},
+		testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
 
