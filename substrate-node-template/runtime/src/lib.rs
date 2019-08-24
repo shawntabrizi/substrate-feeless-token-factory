@@ -254,6 +254,7 @@ impl sudo::Trait for Runtime {
 
 parameter_types! {
 	pub const FreeTransferPeriod: u32 = 500;
+	pub const FundTransferFee: u128 = 10_000;
 }
 
 /// Used for the module template in `./template.rs`
@@ -265,6 +266,7 @@ impl fungible::Trait for Runtime {
 	type TokenFreeTransfers = u32;
 	type FindAuthor = ();
 	type FreeTransferPeriod = FreeTransferPeriod;
+	type FundTransferFee = FundTransferFee;
 }
 
 construct_runtime!(

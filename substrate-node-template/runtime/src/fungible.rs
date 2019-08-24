@@ -40,11 +40,13 @@ pub trait Trait: system::Trait {
 	type TokenFreeTransfers: Parameter + SimpleArithmetic + Default + Copy;
 
 	type FreeTransferPeriod: Get<Self::BlockNumber>;
+
+	type FundTransferFee: Get<BalanceOf<Self>>;
 }
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
-const MODULE_ID: ModuleId =ModuleId(*b"fung-pot");
+const MODULE_ID: ModuleId =ModuleId(*b"coinfund");
 
 decl_event!(
 	pub enum Event<T> where
@@ -125,6 +127,11 @@ decl_module! {
 				.checked_add(&One::one()).ok_or("overflow when counting new transfer")?;
 
 			ensure!(free_transfer_limit < new_free_transfer_count, "no more free transfers available");
+
+			// Burn fees from funds
+			let fund_account = Self::fund_account_id(id);
+			let fund_fee = T::FundTransferFee::get();
+			let _ = T::Currency::withdraw(&fund_account, fund_fee, WithdrawReason::Transfer, ExistenceRequirement::AllowDeath)?;
 
 			Self::make_transfer(id, sender.clone(), to, amount)?;
 
