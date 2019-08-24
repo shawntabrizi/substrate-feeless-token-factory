@@ -9,9 +9,9 @@
 /// https://github.com/paritytech/substrate/blob/master/srml/example/src/lib.rs
 
 use support::{traits::{Currency,  WithdrawReason, ExistenceRequirement}, decl_module, decl_storage, decl_event, ensure,
-	Parameter, StorageValue, StorageMap, dispatch::Result
+	Parameter, StorageValue, StorageMap, StorageDoubleMap, dispatch::Result
 };
-use support::traits::FindAuthor;
+use support::traits::{FindAuthor, Get};
 use sr_primitives::ModuleId;
 use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One,
 	CheckedAdd, CheckedSub, SignedExtension, DispatchError, MaybeSerializeDebug,
@@ -37,7 +37,9 @@ pub trait Trait: system::Trait {
 
 	type FindAuthor: FindAuthor<Self::AccountId>;
 
-	type TokenFreeMoves: Parameter + SimpleArithmetic + Default + Copy;
+	type TokenFreeTransfers: Parameter + SimpleArithmetic + Default + Copy;
+
+	type FreeTransferPeriod: Get<Self::BlockNumber>;
 }
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
@@ -62,10 +64,15 @@ decl_event!(
 decl_storage! {
 	trait Store for Module<T: Trait> as Fungible {
 		Count get(count): T::TokenId;
+
+		// ERC 20
 		TotalSupply get(total_supply): map T::TokenId => T::TokenBalance;
-		FreeMoves get(free_moves): map T::TokenId => T::TokenFreeMoves;
 		Balances get(balance_of): map (T::TokenId, T::AccountId) => T::TokenBalance;
 		Allowance get(allowance_of): map (T::TokenId, T::AccountId, T::AccountId) => T::TokenBalance;
+		
+		// Free Transfers
+		FreeTransfers get(free_transfers): map T::TokenId => T::TokenFreeTransfers;
+		FreeTransferCount get(free_transfer_count): double_map bool, blake2_128((T::TokenId, T::AccountId)) => T::TokenFreeTransfers;
 	}
 }
 
@@ -74,8 +81,18 @@ decl_module! {
 	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 		fn deposit_event<T>() = default;
 
+		/// The time before free transfers are reset
+		const FreeTransferPeriod: T::BlockNumber = T::FreeTransferPeriod::get();
+
+		fn on_initialize(n: T::BlockNumber) {
+			if n % T::FreeTransferPeriod::get() == Zero::zero() {
+				// Reset everyone's transfer count
+				<FreeTransferCount<T>>::remove_prefix(&true);
+			}
+		}
+
 		#[weight = SimpleDispatchInfo::FixedNormal(1_000_000)]
-		fn create_token(origin, #[compact] total_supply: T::TokenBalance, free_moves: T::TokenFreeMoves, deposit: BalanceOf<T>) {
+		fn create_token(origin, #[compact] total_supply: T::TokenBalance, free_transfers: T::TokenFreeTransfers, deposit: BalanceOf<T>) {
 			let sender = ensure_signed(origin)?;
 
 			let id = Self::count();
@@ -84,7 +101,7 @@ decl_module! {
 
 			<Balances<T>>::insert((id, sender.clone()), total_supply);
 			<TotalSupply<T>>::insert(id, total_supply);
-			<FreeMoves<T>>::insert(id, free_moves);
+			<FreeTransfers<T>>::insert(id, free_transfers);
 			<Count<T>>::put(next_id);
 
 			T::Currency::resolve_creating(&Self::fund_account_id(id), imbalance);
@@ -95,6 +112,25 @@ decl_module! {
 		}
 
 		#[weight = SimpleDispatchInfo::FixedNormal(0)]
+		fn try_free_transfer(origin,
+			#[compact] id: T::TokenId,
+			to: <T::Lookup as StaticLookup>::Source,
+			#[compact] amount: T::TokenBalance
+		) {
+			let sender = ensure_signed(origin)?;
+			let to = T::Lookup::lookup(to)?;
+
+			let free_transfer_limit = Self::free_transfers(id);
+			let new_free_transfer_count = Self::free_transfer_count(&true, &(id, sender.clone()))
+				.checked_add(&One::one()).ok_or("overflow when counting new transfer")?;
+
+			ensure!(free_transfer_limit < new_free_transfer_count, "no more free transfers available");
+
+			Self::make_transfer(id, sender.clone(), to, amount)?;
+
+			<FreeTransferCount<T>>::insert(&true, &(id, sender), &new_free_transfer_count);
+		}
+
 		fn transfer(origin,
 			#[compact] id: T::TokenId,
 			to: <T::Lookup as StaticLookup>::Source,
@@ -106,7 +142,6 @@ decl_module! {
 			Self::make_transfer(id, sender, to, amount)?;
 		}
 
-		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn approve(origin,
 			#[compact] id: T::TokenId,
 			spender: <T::Lookup as StaticLookup>::Source,
@@ -120,7 +155,6 @@ decl_module! {
 			Self::deposit_event(RawEvent::Approval(id, sender, spender, value));
 		}
 
-		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn transfer_from(origin,
 			#[compact] id: T::TokenId,
 			from: T::AccountId,
