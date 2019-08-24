@@ -276,7 +276,7 @@ mod tests {
 	use primitives::{H256, Blake2Hasher};
 	use support::{impl_outer_origin, assert_ok, assert_err, parameter_types};
 	use sr_primitives::{
-		traits::{BlakeTwo256, IdentityLookup, ConvertInto},
+		traits::{BlakeTwo256, IdentityLookup, ConvertInto, OnFinalize, OnInitialize},
 		testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
@@ -346,6 +346,19 @@ mod tests {
 	}
 	type FungibleModule = Module<Test>;
 	type Balances = balances::Module<Test>;
+	type System = system::Module<Test>;
+
+	fn run_to_block(n: u64) {
+		while System::block_number() < n {
+			FungibleModule::on_finalize(System::block_number());
+			Balances::on_finalize(System::block_number());
+			System::on_finalize(System::block_number());
+			System::set_block_number(System::block_number() + 1);
+			System::on_initialize(System::block_number());
+			Balances::on_initialize(System::block_number());
+			FungibleModule::on_initialize(System::block_number());
+		}
+	}
 
 	// This function basically just builds a genesis storage key/value store according to
 	// our desired mockup.
@@ -461,7 +474,13 @@ mod tests {
 			assert_err!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 500), "no more free transfers available");
 			// No funds taken
 			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 10);
+			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 4);
 
+			run_to_block(10);
+			// Free transfer count reset
+			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 0);
+			// Transfer works now
+			assert_ok!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 500));
 		});
 	}
 
