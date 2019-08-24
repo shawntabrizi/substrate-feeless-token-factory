@@ -11,11 +11,15 @@
 use support::{traits::{Currency,  WithdrawReason, ExistenceRequirement}, decl_module, decl_storage, decl_event, ensure,
 	Parameter, StorageValue, StorageMap, dispatch::Result
 };
-use sr_primitives::ModuleId;
-use sr_primitives::traits::{AccountIdConversion, Member, SimpleArithmetic, Zero, StaticLookup, One, CheckedAdd, CheckedSub};
-use sr_primitives::weights::SimpleDispatchInfo;
+use support::traits::FindAuthor;
+use sr_primitives::traits::{Member, SimpleArithmetic, Zero, StaticLookup, One,
+	CheckedAdd, CheckedSub, SignedExtension, DispatchError, MaybeSerializeDebug,
+	SaturatedConversion, AccountIdConversion,
+};
+use sr_primitives::weights::{DispatchInfo, SimpleDispatchInfo};
+use sr_primitives::transaction_validity::{TransactionPriority, ValidTransaction};
 use system::ensure_signed;
-
+use codec::{Encode, Decode, Codec};
 
 pub trait Trait: system::Trait {
 
@@ -25,10 +29,12 @@ pub trait Trait: system::Trait {
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 
 	/// The units in which we record balances.
-	type TokenBalance: Member + Parameter + SimpleArithmetic + Default + Copy;
+	type TokenBalance: Parameter + Member + SimpleArithmetic + Codec + Default + Copy + MaybeSerializeDebug;
 
 	/// The arithmetic type of asset identifier.
-	type TokenId: Parameter + SimpleArithmetic + Default + Copy;
+	type TokenId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy + MaybeSerializeDebug;
+
+	type FindAuthor: FindAuthor<Self::AccountId>;
 }
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
@@ -79,6 +85,7 @@ decl_module! {
 			Self::deposit_event(RawEvent::NewToken(id, sender, total_supply));
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(0)]
 		fn transfer(origin,
 			#[compact] id: T::TokenId,
 			to: <T::Lookup as StaticLookup>::Source,
@@ -90,6 +97,7 @@ decl_module! {
 			Self::make_transfer(id, sender, to, amount)?;
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn approve(origin,
 			#[compact] id: T::TokenId,
 			spender: <T::Lookup as StaticLookup>::Source,
@@ -103,6 +111,7 @@ decl_module! {
 			Self::deposit_event(RawEvent::Approval(id, sender, spender, value));
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn transfer_from(origin,
 			#[compact] id: T::TokenId,
 			from: T::AccountId,
@@ -138,6 +147,61 @@ impl<T: Trait> Module<T> {
 		Self::deposit_event(RawEvent::Transfer(id, from, to, amount));
 
 		Ok(())
+	}
+}
+
+/// Allow payment of fees using the token being transferred.
+#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+pub struct TakeTokenFees<T: Trait> {
+	id: T::TokenId,
+	value: T::TokenBalance,
+}
+
+#[cfg(feature = "std")]
+impl<T: Trait> rstd::fmt::Debug for TakeTokenFees<T>
+{
+	fn fmt(&self, f: &mut rstd::fmt::Formatter) -> rstd::fmt::Result {
+		write!(f, "TokenFee ( id: ?, fee: ? )")
+	}
+}
+
+impl<T: Trait> SignedExtension for TakeTokenFees<T> {
+	type AccountId = T::AccountId;
+	type Call = T::Call;
+	type AdditionalSigned = ();
+	type Pre = ();
+	fn additional_signed(&self) -> rstd::result::Result<(), &'static str> { Ok(()) }
+
+	fn validate(
+		&self,
+		who: &Self::AccountId,
+		_call: &Self::Call,
+		_info: DispatchInfo,
+		_len: usize,
+	) -> rstd::result::Result<ValidTransaction, DispatchError> {
+		
+		let id = self.id;
+		let fee = self.value;
+
+		// TODO: Actually look up the block author and transfer to them
+		// let digest = <system::Module<T>>::digest();
+		// let pre_runtime_digests = digest.logs.iter().filter_map(|d| d.as_pre_runtime());
+		// // TODO: FIX
+		// if let Some(author) = T::FindAuthor::find_author(pre_runtime_digests) {
+		// 	<Module<T>>::make_transfer(id, who, author, fee);
+		// } else {
+		// 	Default::default()
+		// }
+
+		let result = <Module<T>>::make_transfer(id, who.clone(), Default::default(), fee);
+
+
+		let mut r = ValidTransaction::default();
+		if result.is_ok() {
+			// TODO: Calculate priority based on percentage of total supply
+			r.priority = fee.saturated_into::<TransactionPriority>();
+		}
+		Ok(r)
 	}
 }
 

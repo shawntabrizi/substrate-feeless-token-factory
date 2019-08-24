@@ -258,6 +258,7 @@ impl fungible::Trait for Runtime {
 	type TokenBalance = u64;
 	type TokenId = u32;
 	type Currency = Balances;
+	type FindAuthor = ();
 }
 
 construct_runtime!(
@@ -294,7 +295,9 @@ pub type SignedExtra = (
 	system::CheckEra<Runtime>,
 	system::CheckNonce<Runtime>,
 	system::CheckWeight<Runtime>,
-	balances::TakeFees<Runtime>
+	balances::TakeFees<Runtime>,
+	// TODO: UI does not quite support this yet
+	//fungible::TakeTokenFees<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
