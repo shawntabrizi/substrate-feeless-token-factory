@@ -258,6 +258,7 @@ impl fungible::Trait for Runtime {
 	type TokenBalance = u64;
 	type TokenId = u32;
 	type Currency = Balances;
+	type TokenFreeMoves = u32;
 	type FindAuthor = ();
 }
 

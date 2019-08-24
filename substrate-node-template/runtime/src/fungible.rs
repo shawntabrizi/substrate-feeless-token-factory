@@ -36,6 +36,8 @@ pub trait Trait: system::Trait {
 	type TokenId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy + MaybeSerializeDebug;
 
 	type FindAuthor: FindAuthor<Self::AccountId>;
+
+	type TokenFreeMoves: Parameter + SimpleArithmetic + Default + Copy;
 }
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
@@ -61,6 +63,7 @@ decl_storage! {
 	trait Store for Module<T: Trait> as Fungible {
 		Count get(count): T::TokenId;
 		TotalSupply get(total_supply): map T::TokenId => T::TokenBalance;
+		FreeMoves get(free_moves): map T::TokenId => T::TokenFreeMoves;
 		Balances get(balance_of): map (T::TokenId, T::AccountId) => T::TokenBalance;
 		Allowance get(allowance_of): map (T::TokenId, T::AccountId, T::AccountId) => T::TokenBalance;
 	}
@@ -72,7 +75,7 @@ decl_module! {
 		fn deposit_event<T>() = default;
 
 		#[weight = SimpleDispatchInfo::FixedNormal(1_000_000)]
-		fn create_token(origin, #[compact] total_supply: T::TokenBalance, deposit: BalanceOf<T>) {
+		fn create_token(origin, #[compact] total_supply: T::TokenBalance, free_moves: T::TokenFreeMoves, deposit: BalanceOf<T>) {
 			let sender = ensure_signed(origin)?;
 
 			let id = Self::count();
@@ -81,6 +84,7 @@ decl_module! {
 
 			<Balances<T>>::insert((id, sender.clone()), total_supply);
 			<TotalSupply<T>>::insert(id, total_supply);
+			<FreeMoves<T>>::insert(id, free_moves);
 			<Count<T>>::put(next_id);
 
 			T::Currency::resolve_creating(&Self::fund_account_id(id), imbalance);
