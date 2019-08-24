@@ -355,6 +355,21 @@ mod tests {
 	}
 
 	#[test]
+	fn it_should_create_token() {
+		with_externalities(&mut new_test_ext(), || {
+			// asserting that the stored value is equal to what we stored
+			let origin = Origin::signed(1);
+			<Count<Test>>::put(1);
+			let total_supply = 10000000000;
+			let free_moves = 40;
+			let deposit = 10;
+
+			assert_ok!(FungibleModule::create_token(origin, total_supply, free_moves, deposit));
+
+		});
+	}
+
+	#[test]
 	fn it_deposits_more_currency_to_token() {
 		with_externalities(&mut new_test_ext(), || {
 			// asserting that the stored value is equal to what we stored
