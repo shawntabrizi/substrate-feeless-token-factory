@@ -112,7 +112,7 @@ decl_module! {
 		}
 
 		#[weight = SimpleDispatchInfo::FixedNormal(0)]
-		fn free_transfer(origin,
+		fn try_free_transfer(origin,
 			#[compact] id: T::TokenId,
 			to: <T::Lookup as StaticLookup>::Source,
 			#[compact] amount: T::TokenBalance
