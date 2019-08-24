@@ -273,7 +273,7 @@ mod tests {
 	use primitives::{H256, Blake2Hasher};
 	use support::{impl_outer_origin, assert_ok, assert_err, parameter_types};
 	use sr_primitives::{
-		traits::{BlakeTwo256, IdentityLookup},
+		traits::{BlakeTwo256, IdentityLookup, ConvertInto},
 		testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
@@ -306,7 +306,7 @@ mod tests {
 		type CreationFee = ();
 		type TransactionBaseFee = ();
 		type TransactionByteFee = ();
-		type WeightToFee = ();
+		type WeightToFee = ConvertInto;
 	}
 
 	impl system::Trait for Test {
@@ -359,6 +359,47 @@ mod tests {
 
 		t.into()
 	}
+
+	#[test]
+	fn basic_setup_works() {
+		with_externalities(&mut new_test_ext(), || {
+			// Users are initially funded
+			assert_eq!(Balances::free_balance(1), 100);
+			assert_eq!(Balances::free_balance(2), 500);
+
+			// Nothing in storage
+			assert_eq!(FungibleModule::count(), 0);
+			assert_eq!(FungibleModule::total_supply(0), 0);
+			assert_eq!(FungibleModule::balance_of((0,0)), 0);
+			assert_eq!(FungibleModule::allowance_of((0, 1, 2)), 0);
+			assert_eq!(FungibleModule::free_transfers(0), 0);
+			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 0);
+			
+			// No funds deposited yet
+			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 0);
+
+		});
+	}
+
+	#[test]
+	fn user_can_create_tokens() {
+		with_externalities(&mut new_test_ext(), || {
+			// User can create a token
+			assert_ok!(FungibleModule::create_token(Origin::signed(1), 10_000, 5, 50));
+
+			// Their free balance is reduced due to deposit
+			assert_eq!(Balances::free_balance(1), 50);
+			// Deposit is now held for the fund
+			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 50);
+
+			// There is now a token
+			assert_eq!(FungibleModule::count(), 1);
+			assert_eq!(FungibleModule::total_supply(0), 10_000);
+			assert_eq!(FungibleModule::balance_of((0,1)), 10_000);
+
+		});
+	}
+
 
 	#[test]
 	fn it_should_create_token() {
