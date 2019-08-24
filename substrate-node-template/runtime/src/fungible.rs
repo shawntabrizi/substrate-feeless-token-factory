@@ -67,6 +67,7 @@ decl_module! {
 			Self::deposit_event(RawEvent::NewToken(id, sender, total_supply));
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(0)]
 		fn transfer(origin,
 			#[compact] id: T::TokenId,
 			to: <T::Lookup as StaticLookup>::Source,
@@ -78,6 +79,7 @@ decl_module! {
 			Self::make_transfer(id, sender, to, amount)?;
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn approve(origin,
 			#[compact] id: T::TokenId,
 			spender: <T::Lookup as StaticLookup>::Source,
@@ -91,6 +93,7 @@ decl_module! {
 			Self::deposit_event(RawEvent::Approval(id, sender, spender, value));
 		}
 
+		#[weight = SimpleDispatchInfo::FixedNormal(10_000)]
 		fn transfer_from(origin,
 			#[compact] id: T::TokenId,
 			from: T::AccountId,
