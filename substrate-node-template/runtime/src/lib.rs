@@ -252,14 +252,19 @@ impl sudo::Trait for Runtime {
 	type Proposal = Call;
 }
 
+parameter_types! {
+	pub const FreeTransferPeriod: u32 = 500;
+}
+
 /// Used for the module template in `./template.rs`
 impl fungible::Trait for Runtime {
 	type Event = Event;
 	type TokenBalance = u64;
 	type TokenId = u32;
 	type Currency = Balances;
-	type TokenFreeMoves = u32;
+	type TokenFreeTransfers = u32;
 	type FindAuthor = ();
+	type FreeTransferPeriod = FreeTransferPeriod;
 }
 
 construct_runtime!(
