@@ -74,7 +74,7 @@ decl_storage! {
 		
 		// Free Transfers
 		FreeTransfers get(free_transfers): map T::TokenId => T::TokenFreeTransfers;
-		FreeTransferCount get(free_transfer_count): double_map bool, blake2_128((T::TokenId, T::AccountId)) => T::TokenFreeTransfers;
+		FreeTransferCount get(free_transfer_count): double_map (), blake2_128((T::TokenId, T::AccountId)) => T::TokenFreeTransfers;
 	}
 }
 
@@ -85,11 +85,13 @@ decl_module! {
 
 		/// The time before free transfers are reset
 		const FreeTransferPeriod: T::BlockNumber = T::FreeTransferPeriod::get();
+		const FundTransferFee: BalanceOf<T> = T::FundTransferFee::get();
+
 
 		fn on_initialize(n: T::BlockNumber) {
 			if n % T::FreeTransferPeriod::get() == Zero::zero() {
 				// Reset everyone's transfer count
-				<FreeTransferCount<T>>::remove_prefix(&true);
+				<FreeTransferCount<T>>::remove_prefix(&());
 			}
 		}
 
@@ -123,7 +125,7 @@ decl_module! {
 			let to = T::Lookup::lookup(to)?;
 
 			let free_transfer_limit = Self::free_transfers(id);
-			let free_transfer_count = Self::free_transfer_count(&true, &(id, sender.clone()));
+			let free_transfer_count = Self::free_transfer_count(&(), &(id, sender.clone()));
 			let new_free_transfer_count = free_transfer_count
 				.checked_add(&One::one()).ok_or("overflow when counting new transfer")?;
 
@@ -138,7 +140,7 @@ decl_module! {
 
 			Self::make_transfer(id, sender.clone(), to, amount).expect("user has been checked to have enough funds to transfer. qed");
 
-			<FreeTransferCount<T>>::insert(&true, &(id, sender), &new_free_transfer_count);
+			<FreeTransferCount<T>>::insert(&(), &(id, sender), &new_free_transfer_count);
 		}
 
 		fn transfer(origin,
@@ -390,7 +392,7 @@ mod tests {
 			assert_eq!(FungibleModule::balance_of((0,2)), 0);
 			assert_eq!(FungibleModule::allowance_of((0, 1, 2)), 0);
 			assert_eq!(FungibleModule::free_transfers(0), 0);
-			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 0);
+			assert_eq!(FungibleModule::free_transfer_count(&(), &(0, 1)), 0);
 			
 			// No funds deposited yet
 			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 0);
@@ -448,14 +450,14 @@ mod tests {
 			assert_eq!(FungibleModule::balance_of((0,2)), 500);
 			// Fee is taken from fund
 			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 40);
-			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 1);
+			assert_eq!(FungibleModule::free_transfer_count(&(), &(0, 1)), 1);
 			// Can't transfer more than they have
 			assert_err!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 9_501), "user does not have enough tokens");
 			// But can transfer everything
 			assert_ok!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 9_500));
 			assert_eq!(FungibleModule::balance_of((0,1)), 0);
 			assert_eq!(FungibleModule::balance_of((0,2)), 10_000);
-			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 2);
+			assert_eq!(FungibleModule::free_transfer_count(&(), &(0, 1)), 2);
 			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 30);
 		});
 	}
@@ -474,11 +476,11 @@ mod tests {
 			assert_err!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 500), "no more free transfers available");
 			// No funds taken
 			assert_eq!(Balances::free_balance(FungibleModule::fund_account_id(0)), 10);
-			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 4);
+			assert_eq!(FungibleModule::free_transfer_count(&(), &(0, 1)), 4);
 
 			run_to_block(10);
 			// Free transfer count reset
-			assert_eq!(FungibleModule::free_transfer_count(&true, &(0, 1)), 0);
+			assert_eq!(FungibleModule::free_transfer_count(&(), &(0, 1)), 0);
 			// Transfer works now
 			assert_ok!(FungibleModule::try_free_transfer(Origin::signed(1), 0, 2, 500));
 		});
